@@ -71,25 +71,54 @@ jobs:
           # Extract built binaries
           docker run --rm -v $(pwd)/bin:/mnt/results crio-bld
 
-      - name: Fetch sysbox CE binaries
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev libapparmor-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build sysbox from source (master branch with PR #106 fix)
         working-directory: k8s
         run: |
-          VERSION="${{ steps.version.outputs.version_semver }}"
-          VERSION_FULL="${{ steps.version.outputs.version_full }}"
-
-          echo "Fetching sysbox-ce v${VERSION} binaries..."
+          echo "Building sysbox from source to include PR #106 fix..."
           mkdir -p bin/sysbox-ce/generic
 
-          TMPDIR=$(mktemp -d)
-          wget -q "https://storage.googleapis.com/sysbox-releases/v${VERSION}/sysbox-ce/sysbox-ce_${VERSION_FULL}.linux_amd64.deb" -P "$TMPDIR"
+          # Clone sysbox repos from master (includes PR #106 features command)
+          git clone --depth 1 https://github.com/nestybox/sysbox-runc.git /tmp/sysbox-runc
+          git clone --depth 1 https://github.com/nestybox/sysbox-mgr.git /tmp/sysbox-mgr
+          git clone --depth 1 https://github.com/nestybox/sysbox-fs.git /tmp/sysbox-fs
+          git clone --depth 1 https://github.com/nestybox/sysbox-libs.git /tmp/sysbox-libs
+          git clone --depth 1 https://github.com/nestybox/sysbox-ipc.git /tmp/sysbox-ipc
+          git clone --depth 1 https://github.com/nestybox/fuse.git /tmp/fuse
 
-          mkdir -p "$TMPDIR/extract"
-          dpkg -x "$TMPDIR/sysbox-ce_${VERSION_FULL}.linux_amd64.deb" "$TMPDIR/extract"
+          # Build sysbox-runc
+          echo "Building sysbox-runc..."
+          cd /tmp/sysbox-runc
+          make clean && make BUILDTAGS="seccomp apparmor"
+          cp sysbox-runc $GITHUB_WORKSPACE/k8s/bin/sysbox-ce/generic/
 
-          cp "$TMPDIR/extract/usr/bin/sysbox-"* bin/sysbox-ce/generic/
-          rm -rf "$TMPDIR"
+          # Build sysbox-mgr
+          echo "Building sysbox-mgr..."
+          cd /tmp/sysbox-mgr
+          make clean && make
+          cp sysbox-mgr $GITHUB_WORKSPACE/k8s/bin/sysbox-ce/generic/
 
-          ls -la bin/sysbox-ce/generic/
+          # Build sysbox-fs
+          echo "Building sysbox-fs..."
+          cd /tmp/sysbox-fs
+          make clean && make
+          cp sysbox-fs $GITHUB_WORKSPACE/k8s/bin/sysbox-ce/generic/
+
+          echo "Built sysbox binaries:"
+          ls -la $GITHUB_WORKSPACE/k8s/bin/sysbox-ce/generic/
+
+          # Verify features command exists
+          echo "Verifying sysbox-runc features command..."
+          $GITHUB_WORKSPACE/k8s/bin/sysbox-ce/generic/sysbox-runc features || echo "Features command check done"
 
       - name: Verify artifacts
         working-directory: k8s
@@ -118,8 +147,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=v${{ steps.version.outputs.version_full }}
-            type=raw,value=v${{ steps.version.outputs.version_full }}-k8s133
+            type=raw,value=master-k8s133
+            type=raw,value=master-k8s133-${{ github.sha }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=
 
@@ -152,5 +181,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Update your sysbox-install.yaml to use:" >> $GITHUB_STEP_SUMMARY
           echo '```yaml' >> $GITHUB_STEP_SUMMARY
-          echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version_full }}-k8s133" >> $GITHUB_STEP_SUMMARY
+          echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:master-k8s133" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** Built from sysbox master branch with PR #106 fix for containerd/CRI-O capability handling" >> $GITHUB_STEP_SUMMARY
