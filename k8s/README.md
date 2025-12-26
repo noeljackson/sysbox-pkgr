@@ -79,3 +79,4 @@ $ docker manifest inspect ghcr.io/nestybox/sysbox-deploy-k8s:latest
 ...
 
 ````
+# Build updated 2025-12-26T19:46:32Z
