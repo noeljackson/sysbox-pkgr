@@ -1,0 +1,156 @@
+name: Build sysbox-deploy-k8s
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'k8s/**'
+      - '.github/workflows/build-sysbox-deploy-k8s.yaml'
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      sysbox_version:
+        description: 'Sysbox version (e.g., 0.6.7)'
+        required: false
+        default: '0.6.7'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/sysbox-deploy-k8s
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get sysbox version
+        id: version
+        run: |
+          if [ -f sources/sysbox/VERSION ]; then
+            VERSION=$(cat sources/sysbox/VERSION)
+          else
+            VERSION="${{ github.event.inputs.sysbox_version || '0.6.7' }}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_semver=$(echo $VERSION | cut -d'-' -f1)" >> $GITHUB_OUTPUT
+          # Add -0 suffix if no patch version
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version_full=${VERSION}-0" >> $GITHUB_OUTPUT
+          else
+            echo "version_full=${VERSION}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build CRI-O with patches
+        working-directory: k8s
+        run: |
+          # Build CRI-O binaries for all supported K8s versions
+          docker build -t crio-bld -f Dockerfile.crio \
+            --build-arg sys_arch=amd64 \
+            --build-arg CRIO_VERSIONS="v1.29 v1.30 v1.31 v1.32 v1.33" .
+
+          # Extract built binaries
+          docker run --rm -v $(pwd)/bin:/mnt/results crio-bld
+
+      - name: Fetch sysbox CE binaries
+        working-directory: k8s
+        run: |
+          VERSION="${{ steps.version.outputs.version_semver }}"
+          VERSION_FULL="${{ steps.version.outputs.version_full }}"
+
+          echo "Fetching sysbox-ce v${VERSION} binaries..."
+          mkdir -p bin/sysbox-ce/generic
+
+          TMPDIR=$(mktemp -d)
+          wget -q "https://storage.googleapis.com/sysbox-releases/v${VERSION}/sysbox-ce/sysbox-ce_${VERSION_FULL}.linux_amd64.deb" -P "$TMPDIR"
+
+          mkdir -p "$TMPDIR/extract"
+          dpkg -x "$TMPDIR/sysbox-ce_${VERSION_FULL}.linux_amd64.deb" "$TMPDIR/extract"
+
+          cp "$TMPDIR/extract/usr/bin/sysbox-"* bin/sysbox-ce/generic/
+          rm -rf "$TMPDIR"
+
+          ls -la bin/sysbox-ce/generic/
+
+      - name: Verify artifacts
+        working-directory: k8s
+        run: |
+          echo "Checking sysbox binaries..."
+          for bin in sysbox-runc sysbox-mgr sysbox-fs; do
+            if [ ! -f "bin/sysbox-ce/generic/$bin" ]; then
+              echo "ERROR: Missing $bin"
+              exit 1
+            fi
+          done
+
+          echo "Checking CRI-O binaries..."
+          for ver in v1.29 v1.30 v1.31 v1.32 v1.33; do
+            if [ ! -f "bin/crio/$ver/crio" ]; then
+              echo "ERROR: Missing CRI-O $ver"
+              exit 1
+            fi
+          done
+
+          echo "All artifacts present!"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=v${{ steps.version.outputs.version_full }}
+            type=raw,value=v${{ steps.version.outputs.version_full }}-k8s133
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: k8s
+          file: k8s/Dockerfile.sysbox-ce
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            sys_arch=amd64
+            sysbox_version=v${{ steps.version.outputs.version_full }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## Built Images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following images were pushed:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Update your sysbox-install.yaml to use:" >> $GITHUB_STEP_SUMMARY
+          echo '```yaml' >> $GITHUB_STEP_SUMMARY
+          echo "image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version_full }}-k8s133" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
