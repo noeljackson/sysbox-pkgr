@@ -3,17 +3,18 @@
 # pointing to sibling sysbox-libs, sysbox-ipc etc.
 FROM golang:1.24-bookworm AS builder
 RUN apt-get update && apt-get install -y pkg-config libseccomp-dev protobuf-compiler
-# Use older protoc-gen-go that supports plugins=grpc syntax (sysbox's Makefile uses it)
+# sysbox-ipc Makefile uses old protoc plugins=grpc syntax — need legacy protoc-gen-go
 RUN go install github.com/golang/protobuf/protoc-gen-go@v1.5.4
 RUN git clone --recurse-submodules https://github.com/nestybox/sysbox.git /src/sysbox
-WORKDIR /src/sysbox
-RUN make sysbox-ipc && make sysbox-runc
-RUN cp sysbox-runc/build/$(uname -m)/sysbox-runc /out-sysbox-runc
+WORKDIR /src/sysbox/sysbox-ipc
+RUN make sysbox-ipc
+WORKDIR /src/sysbox/sysbox-runc
+RUN make && make BINDIR=/out install
 
 FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
 
 # Replace sysbox-runc with master build (has 'features' cmd for containerd v2)
-COPY --from=builder /out-sysbox-runc /opt/sysbox/bin/generic/sysbox-runc
+COPY --from=builder /out/sysbox-runc /opt/sysbox/bin/generic/sysbox-runc
 
 # Fix RKE2 kubelet --containerd= detection
 COPY scripts/kubelet-config-helper.sh /opt/sysbox/scripts/kubelet-config-helper.sh
