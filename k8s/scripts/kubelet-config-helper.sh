@@ -1265,6 +1265,15 @@ function get_runtime_kubelet_rke2() {
 			runtime="unix://${containerd_sock}"
 		fi
 	fi
+
+	# RKE2 v1.35+ uses kubelet config drop-ins instead of command-line flags.
+	# Check the kubelet config directory for containerRuntimeEndpoint.
+	if [[ ${runtime} == "" ]]; then
+		local config_runtime=$(grep -rh 'containerRuntimeEndpoint:' /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/ 2>/dev/null | head -1 | awk '{print $2}')
+		if [[ ${config_runtime} != "" ]]; then
+			runtime="${config_runtime}"
+		fi
+	fi
 	set -e
 
 	# If runtime is unknown, assume it's Docker
