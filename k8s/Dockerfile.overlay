@@ -1,4 +1,13 @@
+# Build sysbox-runc from master (includes 'features' command for containerd v2 support)
+FROM golang:1.24-bookworm AS builder
+RUN git clone --depth 1 https://github.com/nestybox/sysbox-runc.git /src/sysbox-runc
+WORKDIR /src/sysbox-runc
+RUN make && make BINDIR=/out install
+
 FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
+
+# Replace sysbox-runc with master build (has 'features' cmd for containerd v2)
+COPY --from=builder /out/sysbox-runc /opt/sysbox/bin/generic/sysbox-runc
 
 # Fix RKE2 kubelet --containerd= detection
 COPY scripts/kubelet-config-helper.sh /opt/sysbox/scripts/kubelet-config-helper.sh
