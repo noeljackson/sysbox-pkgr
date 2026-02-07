@@ -9,7 +9,11 @@ RUN git clone --recurse-submodules https://github.com/nestybox/sysbox.git /src/s
 WORKDIR /src/sysbox/sysbox-ipc
 RUN make sysbox-ipc
 WORKDIR /src/sysbox/sysbox-runc
-RUN make && make BINDIR=/out install
+# VERSION must be passed from parent — sysbox-runc Makefile doesn't define it.
+# Without it, app.Version is empty and --version flag is not registered,
+# which breaks CRI-O feature detection (CRI-O calls `sysbox-runc --version`
+# before `sysbox-runc features`, and skips features on version failure).
+RUN make VERSION=$(cat /src/sysbox/VERSION) && make BINDIR=/out install
 
 FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
 
