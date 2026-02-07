@@ -1,2 +1,10 @@
 FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
+
+# Fix RKE2 kubelet --containerd= detection
 COPY scripts/kubelet-config-helper.sh /opt/sysbox/scripts/kubelet-config-helper.sh
+
+# Add K8s v1.33-v1.35 support (version check + CRI-O binary symlinks)
+COPY scripts/sysbox-deploy-k8s.sh /opt/sysbox/scripts/sysbox-deploy-k8s.sh
+RUN ln -s /opt/crio-deploy/bin/v1.32 /opt/crio-deploy/bin/v1.33 && \
+    ln -s /opt/crio-deploy/bin/v1.32 /opt/crio-deploy/bin/v1.34 && \
+    ln -s /opt/crio-deploy/bin/v1.32 /opt/crio-deploy/bin/v1.35
