@@ -1256,6 +1256,15 @@ function stop_rke2() {
 function get_runtime_kubelet_rke2() {
 	set +e
 	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+
+	# RKE2 uses --containerd= flag instead of --container-runtime-endpoint=
+	if [[ ${runtime} == "" ]]; then
+		local containerd_sock=$(ps -e -o command | egrep kubelet | \
+			egrep -o "\-\-containerd=\S*" | cut -d '=' -f2)
+		if [[ ${containerd_sock} != "" ]]; then
+			runtime="unix://${containerd_sock}"
+		fi
+	fi
 	set -e
 
 	# If runtime is unknown, assume it's Docker
