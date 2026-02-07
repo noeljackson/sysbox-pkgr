@@ -1,0 +1,2 @@
+FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
+COPY scripts/kubelet-config-helper.sh /opt/sysbox/scripts/kubelet-config-helper.sh
