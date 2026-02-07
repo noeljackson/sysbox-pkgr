@@ -1,7 +1,10 @@
 # Build sysbox-runc from master (includes 'features' command for containerd v2 support)
+# Must clone full sysbox repo because sysbox-runc has go.mod replace directives
+# pointing to sibling sysbox-libs, sysbox-ipc etc.
 FROM golang:1.24-bookworm AS builder
-RUN git clone --depth 1 https://github.com/nestybox/sysbox-runc.git /src/sysbox-runc
-WORKDIR /src/sysbox-runc
+RUN apt-get update && apt-get install -y pkg-config libseccomp-dev
+RUN git clone --recurse-submodules --depth 1 https://github.com/nestybox/sysbox.git /src/sysbox
+WORKDIR /src/sysbox/sysbox-runc
 RUN make && make BINDIR=/out install
 
 FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
