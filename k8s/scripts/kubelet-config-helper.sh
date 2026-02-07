@@ -356,7 +356,7 @@ function get_kubelet_exec_line_from_shell() {
 		return
 	fi
 
-	local execstart_line=$(ps -e -o command | egrep "^kubelet")
+	local execstart_line=$(ps -eww -o command | egrep "^kubelet")
 	execstart_line_global="$execstart_line"
 	echo "$execstart_line"
 }
@@ -1121,7 +1121,7 @@ function stop_kubelet_container() {
 
 function get_runtime_kubelet_docker() {
 	set +e
-	runtime=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
+	runtime=$(docker exec kubelet bash -c "ps -eww -o command | egrep \^kubelet | egrep -o \"container-runtime-endpoint=\S*\" | cut -d '=' -f2")
 	set -e
 
 	# If runtime is unknown, assume it's Docker
@@ -1157,7 +1157,7 @@ function config_kubelet_rke() {
 	local kubelet_tmp_var="KUBELET_EXTRA_ARGS"
 
 	# Extract kubelet's current execution attributes and store them in a temp file.
-	local cur_kubelet_attr=$(docker exec kubelet bash -c "ps -e -o command | egrep \^kubelet | cut -d\" \" -f2-")
+	local cur_kubelet_attr=$(docker exec kubelet bash -c "ps -eww -o command | egrep \^kubelet | cut -d\" \" -f2-")
 	echo "${kubelet_tmp_var}=\"${cur_kubelet_attr}\"" >"${kubelet_tmp_file}"
 
 	# Add crio-specific config attributes to the temporary kubelet config file.
@@ -1255,11 +1255,11 @@ function stop_rke2() {
 
 function get_runtime_kubelet_rke2() {
 	set +e
-	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(ps -eww -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
 
 	# RKE2 uses --containerd= flag instead of --container-runtime-endpoint=
 	if [[ ${runtime} == "" ]]; then
-		local containerd_sock=$(ps -e -o command | egrep kubelet | \
+		local containerd_sock=$(ps -eww -o command | egrep kubelet | \
 			egrep -o "\-\-containerd=\S*" | cut -d '=' -f2)
 		if [[ ${containerd_sock} != "" ]]; then
 			runtime="unix://${containerd_sock}"
@@ -1371,7 +1371,7 @@ function kubelet_rke2_deployment() {
 
 function get_runtime_kubelet_systemctl {
 	set +e
-	runtime=$(ps -e -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
+	runtime=$(ps -eww -o command | egrep kubelet | egrep -o "container-runtime-endpoint=\S*" | cut -d '=' -f2)
 	set -e
 
 	# If runtime is unknown, assume it's Docker
