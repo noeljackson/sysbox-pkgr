@@ -13,6 +13,9 @@ RUN make && make BINDIR=/out install
 
 FROM registry.nestybox.com/nestybox/sysbox-deploy-k8s:v0.6.7-0
 
+# Bump version so deploy script detects upgrade and re-copies binaries to host
+ENV SYSBOX_VERSION=v0.6.7-master
+
 # Replace sysbox-runc with master build (has 'features' cmd for containerd v2)
 COPY --from=builder /out/sysbox-runc /opt/sysbox/bin/generic/sysbox-runc
 
