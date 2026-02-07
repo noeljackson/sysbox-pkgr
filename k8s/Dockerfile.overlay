@@ -2,8 +2,10 @@
 # Must clone full sysbox repo because sysbox-runc has go.mod replace directives
 # pointing to sibling sysbox-libs, sysbox-ipc etc.
 FROM golang:1.24-bookworm AS builder
-RUN apt-get update && apt-get install -y pkg-config libseccomp-dev
-RUN git clone --recurse-submodules --depth 1 https://github.com/nestybox/sysbox.git /src/sysbox
+RUN apt-get update && apt-get install -y pkg-config libseccomp-dev protobuf-compiler
+RUN git clone --recurse-submodules https://github.com/nestybox/sysbox.git /src/sysbox
+WORKDIR /src/sysbox/sysbox-ipc
+RUN make grpc
 WORKDIR /src/sysbox/sysbox-runc
 RUN make && make BINDIR=/out install
 
